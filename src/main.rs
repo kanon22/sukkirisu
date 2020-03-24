@@ -1,6 +1,8 @@
 extern crate reqwest;
 extern crate scraper;
+extern crate regex;
 use scraper::{Html, Selector};
+use regex::Regex;
 use std::env;
 
 #[tokio::main]
@@ -26,20 +28,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let p_rank_selector = Selector::parse(r#"p[class="rankTxt"]"#).unwrap();
     let rank: String;
     if div_month_class.contains("type1") {
-        rank = "超スッキリす！".to_string();
+        rank = String::from("✨✨超スッキリす！！✨✨");
     } else if div_month_class.contains("type2") {
         let p_rank = div_month.select(&p_rank_selector)
                      .next().unwrap();
         let p_rank_txt = p_rank.text().collect::<Vec<_>>()[0];
-        rank = format!("スッキリす {}", p_rank_txt);
+        rank = format!("スッキリす🍀 {}", p_rank_txt);
     } else if div_month_class.contains("type3") {
         let p_rank = div_month.select(&p_rank_selector)
                      .next().unwrap();
         let p_rank_txt = p_rank.text().collect::<Vec<_>>()[0];
-        rank = format!("まあまあスッキリす {}", p_rank_txt);
+        rank = format!("まあまあスッキリす🍥 {}", p_rank_txt);
     //} else if div_month_class.contains("type4") {
     } else {
-        rank = "ガッカリす...".to_string();
+        rank = String::from("ガッカリす...💧");
     }
 
     /***** 説明文 *****/
@@ -54,8 +56,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .next().unwrap();
     let div_color_txt = div_color.text().collect::<Vec<_>>()[0];
 
-    println!("{}: {}\tラッキーカラー: {}",
-             rank, p_description_txt, div_color_txt);
+    /***** 更新日 *****/
+    let span_date = document.select(&Selector::parse(r#"span[class="date"]"#).unwrap())
+                    .next().unwrap();
+    let span_date_txt = span_date.text().collect::<Vec<_>>()[0].trim();
+    let re = Regex::new(r"\d+").unwrap();
+    let mut cap = re.captures_iter(span_date_txt);
+    let modified_date = format!("{}/{}",
+                                &cap.next().unwrap()[0],
+                                &cap.next().unwrap()[0]);
+
+    println!("{}月: {}\n{}\nラッキーカラー: {}\n更新日: {}",
+             month, rank, p_description_txt, div_color_txt, modified_date);
 
     Ok(())
 }
