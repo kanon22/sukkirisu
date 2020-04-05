@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     /***** コマンドライン引数を読み込み *****/
     let args: Vec<String> = env::args().collect();
-    let month: i32 = args[1].parse().unwrap();
+    let month: i32 = args[1].parse()?;
 
     /***** GETリクエスト *****/
     let res = reqwest::get(url).await?;
