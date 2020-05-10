@@ -11,22 +11,30 @@ extern crate reqwest;
 extern crate scraper;
 
 use lambda::error::HandlerError;
+use std::collections::HashMap;
 use std::error::Error;
 
 use regex::Regex;
 use scraper::{Html, Selector};
-//use std::env;
 
 #[derive(Deserialize, Clone)]
 struct CustomEvent {
-    #[serde(rename = "firstName")]
-    first_name: String,
-    month: String,
+    body: String,
 }
 
 #[derive(Serialize, Clone)]
+struct Body {
+    response_type: String,
+    text: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct CustomOutput {
-    message: String,
+    is_base64_encoded: bool,
+    status_code: i32,
+    headers: HashMap<(), ()>,
+    body: String,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -37,22 +45,33 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn sukkirisu_handler(e: CustomEvent, c: lambda::Context) -> Result<CustomOutput, HandlerError> {
-    if e.first_name == "" {
-        error!("Empty first name in request {}", c.aws_request_id);
-        return Err(c.new_error("Empty first name"));
+    if e.body == "" {
+        error!("Empty body: request_id {}", c.aws_request_id);
+        return Err(c.new_error("Empty body"));
     }
-    if e.month == "" {
-        error!("Empty month in request {}", c.aws_request_id);
+    let data = e.body.split("&").collect::<Vec<&str>>();
+    let month = data
+        .iter()
+        .find(|&&x| x.contains("text="))
+        .unwrap()
+        .split("=")
+        .collect::<Vec<&str>>()[1];
+    if month == "" {
+        error!("Empty month: request_id {}", c.aws_request_id);
         return Err(c.new_error("Empty month"));
     }
-    if let Ok(month_num) = e.month.parse::<i32>() {
-        match sukkirisu(month_num) {
-            Ok(res) => {
-                Ok(CustomOutput {
-                    //message: format!("Hello, {} and {} is good number!", e.first_name, month_num),
-                    message: res,
+    match month.parse::<i32>() {
+        Ok(month_num @ 1..=12) => match sukkirisu(month_num) {
+            Ok(res) => Ok(CustomOutput {
+                is_base64_encoded: false,
+                status_code: 200,
+                headers: HashMap::new(),
+                body: serde_json::to_string(&Body {
+                    response_type: String::from("in_channel"),
+                    text: res,
                 })
-            }
+                .unwrap(),
+            }),
             Err(err) => {
                 error!(
                     "Failed to get sukkirisu rank of request {}",
@@ -60,22 +79,27 @@ fn sukkirisu_handler(e: CustomEvent, c: lambda::Context) -> Result<CustomOutput,
                 );
                 return Err(c.new_error(&err.to_string()));
             }
+        },
+        Ok(_) => {
+            error!(
+                "month \"{}\" shoud be in the range of 1 to 12: request_id {} ",
+                month, c.aws_request_id
+            );
+            return Err(c.new_error("Invalid month"));
         }
-    } else {
-        error!("month in request {} is not a number", c.aws_request_id);
-        return Err(c.new_error("Invalid month"));
+        Err(err) => {
+            error!(
+                "month \"{}\" is not a number: request_id {}",
+                month, c.aws_request_id
+            );
+            return Err(c.new_error(&format!("Invalid month: {}", err.to_string())));
+        }
     }
 }
 
 #[tokio::main]
 async fn sukkirisu(month: i32) -> Result<String, Box<dyn std::error::Error>> {
     let url = "http://www.ntv.co.jp/sukkiri/sukkirisu/index.html";
-
-    /***** コマンドライン引数を読み込み *****/
-    /*
-    let args: Vec<String> = env::args().collect();
-    let month: i32 = args[1].parse()?;
-    */
 
     /***** GETリクエスト *****/
     let res = reqwest::get(url).await?;
