@@ -12,6 +12,7 @@ extern crate scraper;
 
 use lambda::error::HandlerError;
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 
 use regex::Regex;
@@ -39,12 +40,42 @@ struct CustomOutput {
 
 fn main() -> Result<(), Box<dyn Error>> {
     simple_logger::init_with_level(log::Level::Info)?;
-    lambda!(sukkirisu_handler);
 
+    let mut argument = env::args();
+    match argument.len() {
+        1 => {
+            lambda!(lambda_handler);
+        },
+        2 => {
+            cli_handler(argument.nth(1))?;
+        },
+        _ => {
+            error!("too many arguments. usage: cargo run <month number>");
+        },
+    }
     Ok(())
 }
 
-fn sukkirisu_handler(e: CustomEvent, c: lambda::Context) -> Result<CustomOutput, HandlerError> {
+fn cli_handler(arg: Option<String>) -> Result<(), Box<dyn Error>> {
+    if let Some(month) = arg {
+        match month.parse::<i32>() {
+            Ok(month_num @ 1..=12) => {
+                let res = sukkirisu(month_num)?;
+                println!("{}", res);
+            }
+            Ok(_) => {
+                error!("month \"{}\" should be in the range of 1 to 12", month);
+            }
+            Err(err) => {
+                error!("month \"{}\" is not a number", month);
+                return Err(Box::new(err));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn lambda_handler(e: CustomEvent, c: lambda::Context) -> Result<CustomOutput, HandlerError> {
     if e.body == "" {
         error!("Empty body: request_id {}", c.aws_request_id);
         return Err(c.new_error("Empty body"));
@@ -82,7 +113,7 @@ fn sukkirisu_handler(e: CustomEvent, c: lambda::Context) -> Result<CustomOutput,
         },
         Ok(_) => {
             error!(
-                "month \"{}\" shoud be in the range of 1 to 12: request_id {} ",
+                "month \"{}\" should be in the range of 1 to 12: request_id {} ",
                 month, c.aws_request_id
             );
             return Err(c.new_error("Invalid month"));
