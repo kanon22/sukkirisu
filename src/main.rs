@@ -45,13 +45,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     match argument.len() {
         1 => {
             lambda!(lambda_handler);
-        },
+        }
         2 => {
             cli_handler(argument.nth(1))?;
-        },
+        }
         _ => {
             error!("too many arguments. usage: cargo run <month number>");
-        },
+        }
     }
     Ok(())
 }
@@ -138,49 +138,74 @@ async fn sukkirisu(month: i32) -> Result<String, Box<dyn std::error::Error>> {
 
     /***** htmlのパース *****/
     let document = Html::parse_document(&body);
-    let query = format!(r#"div[id="month{}"]"#, month);
-    let div_month = document
-        .select(&Selector::parse(&query).unwrap())
-        .next()
-        .unwrap();
+
+    // 1位から12位の月を記録する配列
+    let mut month_list: Vec<i32> = Vec::new();
+    let mut desc_list: Vec<&str> = Vec::new();
+    let mut color_list: Vec<&str> = Vec::new();
+    // サイトで表示される順番
+    let ranking = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1];
+
+    let row1_list = document
+        .select(&Selector::parse(r#"div[class="row1"]"#).unwrap())
+        .collect::<Vec<_>>();
+    for row1 in row1_list {
+        let month_num: i32 = row1
+            .select(&Selector::parse(r#"p[class="month"]"#).unwrap())
+            .next()
+            .unwrap()
+            .text()
+            .collect::<Vec<_>>()[0]
+            .parse::<i32>()?;
+        month_list.push(month_num);
+    }
+    // 探している月が何番目か
+    let idx: usize = month_list.iter().position(|&x| x == month).unwrap();
 
     /***** 順位 *****/
-    let div_month_class = div_month.value().attr("class").unwrap();
-    let p_rank_selector = Selector::parse(r#"p[class="rankTxt"]"#).unwrap();
     let rank: String;
-    if div_month_class.contains("type1") {
-        rank = String::from("✨✨超スッキリす！！✨✨");
-    } else if div_month_class.contains("type2") {
-        let p_rank = div_month.select(&p_rank_selector).next().unwrap();
-        let p_rank_txt = p_rank.text().collect::<Vec<_>>()[0];
-        rank = format!("スッキリす🍀 {}", p_rank_txt);
-    } else if div_month_class.contains("type3") {
-        let p_rank = div_month.select(&p_rank_selector).next().unwrap();
-        let p_rank_txt = p_rank.text().collect::<Vec<_>>()[0];
-        rank = format!("まあまあスッキリす🍥 {}", p_rank_txt);
-    //} else if div_month_class.contains("type4") {
-    } else {
-        rank = String::from("ガッカリす...💧");
+    match ranking[idx] {
+        r @ 2..=6 => {
+            rank = format!("スッキリす🍀 {}位", r);
+        }
+        r @ 7..=11 => {
+            rank = format!("まあまあスッキリす🍥 {}位", r);
+        }
+        1 => {
+            rank = String::from("✨✨超スッキリす！！✨✨");
+        }
+        12 => {
+            rank = String::from("ガッカリす...💧");
+        }
+        _ => {
+            unreachable!();
+        }
     }
 
-    /***** 説明文 *****/
-    // 複数あるpタグの最後の要素をlast()で取得
-    let p_description = div_month
-        .select(&Selector::parse("p").unwrap())
-        .last()
-        .unwrap();
-    let p_description_txt = p_description.text().collect::<Vec<_>>()[0];
-
-    /***** ラッキーカラー *****/
-    let div_color = div_month
-        .select(&Selector::parse(r#"div[id="color"]"#).unwrap())
-        .next()
-        .unwrap();
-    let div_color_txt = div_color.text().collect::<Vec<_>>()[0];
+    /***** 説明文, ラッキーカラー *****/
+    let row2_list = document
+        .select(&Selector::parse(r#"div[class="row2"]"#).unwrap())
+        .collect::<Vec<_>>();
+    for row2 in row2_list {
+        let description: &str = row2
+            .select(&Selector::parse("p").unwrap())
+            .next()
+            .unwrap()
+            .text()
+            .collect::<Vec<_>>()[0];
+        desc_list.push(description);
+        let color: &str = row2
+            .select(&Selector::parse("div").unwrap())
+            .next()
+            .unwrap()
+            .text()
+            .collect::<Vec<_>>()[0];
+        color_list.push(color);
+    }
 
     /***** 更新日 *****/
     let span_date = document
-        .select(&Selector::parse(r#"span[class="date"]"#).unwrap())
+        .select(&Selector::parse(r#"p[class="date"]"#).unwrap())
         .next()
         .unwrap();
     let span_date_txt = span_date.text().collect::<Vec<_>>()[0].trim();
@@ -190,6 +215,6 @@ async fn sukkirisu(month: i32) -> Result<String, Box<dyn std::error::Error>> {
 
     Ok(format!(
         "{}月: {}\n{}\nラッキーカラー: {}\n更新日: {}",
-        month, rank, p_description_txt, div_color_txt, modified_date
+        month, rank, desc_list[idx], color_list[idx], modified_date
     ))
 }
